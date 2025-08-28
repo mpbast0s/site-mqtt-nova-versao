@@ -1,35 +1,79 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect, useState } from 'react';
+import mqtt from 'mqtt';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [client, setClient] = useState(null);
+  const [connectStatus, setConnectStatus] = useState('Disconnected');
+  const [payload, setPayload] = useState({});
+  const [isSub, setIsSub] = useState(false);
+
+  const topico = 'peteletrica/topico';
+  const broker = 'wss://test.mosquitto.org:8081';
+
+
+  const mqttConnect = (host) => {
+    setConnectStatus('Connecting');
+    const mqttClient = mqtt.connect(host);
+    setClient(mqttClient);
+  };
+
+  const mqttSub = (subscription) => {
+    if (client) {
+      const { topic, qos } = subscription;
+      client.subscribe(topic, { qos }, (error) => {
+        if (error) {
+          console.log('Subscribe to topics error', error);
+          return;
+        }
+        setIsSub(true);
+      });
+    }
+  };
+
+  useEffect(() => {
+    mqttConnect(broker);
+  }, []);
+
+  useEffect(() => {
+    if (client) {
+      client.on('connect', () => {
+        console.log('Connected');
+        setConnectStatus('Connected');
+        mqttSub({ topic: topico, qos: 0 });
+      });
+
+      client.on('error', (err) => {
+        console.error('Connection error:', err);
+        client.end();
+      });
+
+      client.on('reconnect', () => {
+        console.log('Reconnecting...');
+        setConnectStatus('Reconnecting');
+      });
+
+      client.on('message', (topic, message) => {
+        const payload = { topic, message: message.toString() };
+        console.log('Received Message:', payload);
+        setPayload(payload);
+      });
+    }
+  }, [client]);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="App">
+      <h2>MQTT Status: {connectStatus}</h2>
+      {isSub && <p>✔ Subscribed to: {topico}</p>}
+      {payload.message && (
+        <div>
+          <h4>Última Mensagem:</h4>
+          <p><strong>Topico:</strong> {payload.topic}</p>
+          <p><strong>Mensagem:</strong> {payload.message}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
